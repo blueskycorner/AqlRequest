@@ -1,0 +1,42 @@
+service: AqlRequest
+
+frameworkVersion: ">=1.2.0 <2.0.0"
+
+provider:
+  name: aws
+  runtime: java8
+  stage: dev # Set the default stage used. Default is dev
+  region: eu-west-1 # Overwrite the default region used. Default is us-east-1
+  profile: production # The default profile to use with this service
+  memorySize: 128 # Overwrite the default memory size. Default is 1024
+  
+package:
+  artifact: target/aql-request.jar
+
+functions:
+  currentTime:
+    handler: com.aql.request.Handler
+    events:
+      - http:
+          path: request
+          method: post
+
+resources:
+  Resources:
+    usersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: "aqlRequest"
+        AttributeDefinitions:
+          - AttributeName: "email"
+            AttributeType: "S"
+          - AttributeName: "timestamp"
+            AttributeType: "N"
+        KeySchema:
+          - AttributeName: "timestamp"
+            KeyType: "HASH"
+          - AttributeName: "email"
+            KeyType: "RANGE"
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
