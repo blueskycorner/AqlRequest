@@ -20,6 +20,10 @@ provider:
         - dynamodb:PutItem
         - dynamodb:UpdateItem
         - dynamodb:DeleteItem
+        - dynamodb:DescribeStream
+        - dynamodb:GetRecords
+        - dynamodb:GetShardIterator
+        - dynamodb:ListStreams
       Resource: "arn:aws:dynamodb:eu-west-1:*:*"
   
 package:
@@ -28,10 +32,24 @@ package:
 functions:
   currentTime:
     handler: com.aql.request.Handler
+    environment:
+      TABLE_NAME: aqlRequest
     events:
       - http:
           path: request
           method: post
+  indexAqlRequest:
+    handler: com.aql.request.HandlerIndex
+    environment:
+      ELASTICSEARCH_ENDPOINT:
+        Fn::GetAtt: [ ElasticSearchCluster , DomainEndpoint ]
+    events:
+      - stream: 
+          type: dynamodb
+          arn:
+            Fn::GetAtt:
+              - usersTable
+              - StreamArn
 
 resources:
   Resources:
@@ -52,3 +70,19 @@ resources:
         ProvisionedThroughput:
           ReadCapacityUnits: 5
           WriteCapacityUnits: 5
+        StreamSpecification:
+          StreamViewType: NEW_IMAGE
+    ElasticSearchCluster:
+      Type: AWS::Elasticsearch::Domain
+      Properties:
+        DomainName: aql
+        EBSOptions:
+          EBSEnabled: true
+          VolumeType: gp2
+          VolumeSize: 10
+        ElasticsearchClusterConfig:
+          InstanceType: t2.small.elasticsearch
+          InstanceCount: 1
+          DedicatedMasterEnabled: false
+          ZoneAwarenessEnabled: false
+        ElasticsearchVersion: 5.3

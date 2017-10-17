@@ -23,7 +23,7 @@ public class Handler implements RequestHandler<Map<String, Object>, ApiGatewayRe
 	private static final Logger LOG = Logger.getLogger(Handler.class);
         private static final ObjectMapper objectMapper = new ObjectMapper();
 	private DynamoDB dynamoDb;
-    	private String DYNAMODB_TABLE_NAME = "aqlRequest";
+    	private String DYNAMODB_TABLE_NAME = System.getenv("TABLE_NAME");
 	private Regions REGION = Regions.EU_WEST_1;
 
 	private void Record(AqlRequest r, String ip, long date)
