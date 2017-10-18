@@ -1,5 +1,10 @@
 package com.aql.request;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.log4j.Logger;
@@ -21,12 +26,13 @@ import java.util.regex.*;
 public class Handler implements RequestHandler<Map<String, Object>, ApiGatewayResponse> {
 
 	private static final Logger LOG = Logger.getLogger(Handler.class);
-        private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 	private DynamoDB dynamoDb;
-    	private String DYNAMODB_TABLE_NAME = System.getenv("TABLE_NAME");
+    private String DYNAMODB_TABLE_NAME = System.getenv("TABLE_NAME");
 	private Regions REGION = Regions.EU_WEST_1;
+	private static final String geoIpEndpoint = "http://freegeoip.net/json/";
 
-	private void Record(AqlRequest r, String ip, long date)
+	private void Record(AqlRequest r, String ip, long date, String country, String location)
 	{
 		AmazonDynamoDBClient client = new AmazonDynamoDBClient();
         client.setRegion(Region.getRegion(REGION));
@@ -46,6 +52,8 @@ public class Handler implements RequestHandler<Map<String, Object>, ApiGatewayRe
                         .withString("type", r.getRequestData().getType())
                         .withString("procedure", r.getRequestData().getProcedure())
                         .withString("aql", r.getRequestData().getAql())
+                        .withString("country", country)
+                        .withString("location", location)
                         ));
         LOG.info("PutItem OK");
 	}
@@ -56,6 +64,8 @@ public class Handler implements RequestHandler<Map<String, Object>, ApiGatewayRe
 		LOG.info("received: " + input);
         AqlRequest r = null;
         String ip = null;
+        String country = null;
+        String location = null;
         try
         {
             r = objectMapper.readValue(input.get("body").toString(), AqlRequest.class);
@@ -68,13 +78,18 @@ public class Handler implements RequestHandler<Map<String, Object>, ApiGatewayRe
 			if (b)
 			{
 				ip = m.group(1);
+				LOG.info("SourceIp : " + ip);
+				
+				GeolocationResponse geoLoc = GetIpLocation(ip);
+				country = geoLoc.getCountry_name();
+				location = geoLoc.getLatitude() + "," + geoLoc.getLongitude();
 			}
-			LOG.info("SourceIp : " + ip);
+			
 			
 			long date = System.currentTimeMillis();
 			LOG.info("date : " + date);
 			
-			Record(r,ip,date);
+			Record(r,ip,date, country, location);
        }
         catch (java.io.IOException e) 
        {
@@ -89,5 +104,53 @@ public class Handler implements RequestHandler<Map<String, Object>, ApiGatewayRe
 				.setObjectBody(responseBody)
 				.setHeaders(headers)
 				.build();
+	}
+
+	private GeolocationResponse GetIpLocation(String ip) 
+	{
+		GeolocationResponse geoLocationResponse = null;
+		
+		String geoRequest = geoIpEndpoint + ip;
+		LOG.info("geoRequest : " + geoRequest);
+		
+		try
+		{
+			HttpURLConnection urlConnection=null;
+			URL url = new URL(geoRequest);  
+	        urlConnection = (HttpURLConnection) url.openConnection();
+	        urlConnection.setDoOutput(true);   
+	        urlConnection.setRequestMethod("GET");  
+	        urlConnection.setUseCaches(false);  
+	        urlConnection.setConnectTimeout(10000);  
+	        urlConnection.setReadTimeout(10000);  
+	        urlConnection.setRequestProperty("Content-Type","application/json");
+	        urlConnection.connect();  
+	
+	        LOG.info("Response : " + urlConnection.getResponseCode());
+	        
+	        BufferedReader in = new BufferedReader(
+			        new InputStreamReader(urlConnection.getInputStream()));
+			String inputLine;
+			StringBuffer response = new StringBuffer();
+
+			while ((inputLine = in.readLine()) != null) {
+				response.append(inputLine);
+			}
+			in.close();
+			
+			LOG.info("Response body: " + response.toString());
+	        
+	        geoLocationResponse = objectMapper.readValue(response.toString(), GeolocationResponse.class);
+	        if (geoLocationResponse != null)
+	        {
+	        	LOG.info("geoResponse : " + geoLocationResponse);
+	        }
+		}
+		catch (Exception e)
+		{
+			LOG.error(e.getStackTrace());
+		}
+    
+		return geoLocationResponse;
 	}
 }

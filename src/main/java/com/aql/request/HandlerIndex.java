@@ -93,6 +93,8 @@ public class HandlerIndex implements RequestHandler<DynamodbEvent, String> {
                 	json.put("type",map.get("type").getS());
                 	json.put("aql",map.get("aql").getS());
                 	json.put("ip",map.get("ip").getS());
+                	json.put("country",map.get("country").getS());
+                	json.put("location",map.get("location").getS());
                 	
                     LOG.info("item : " + json);
                     
