@@ -6,7 +6,7 @@ provider:
   name: aws
   runtime: java8
   stage: dev # Set the default stage used. Default is dev
-  region: eu-west-1 # Overwrite the default region used. Default is us-east-1
+  region: ${opt:stage, 'eu-west-1'} # Overwrite the default region used. Default is us-east-1
   profile: PERSO # The default profile to use with this service
   memorySize: 512 # Overwrite the default memory size. Default is 1024
   timeout: 30
@@ -24,7 +24,8 @@ provider:
         - dynamodb:GetRecords
         - dynamodb:GetShardIterator
         - dynamodb:ListStreams
-      Resource: "arn:aws:dynamodb:eu-west-1:*:*"
+      Resource:
+        Fn::GetAtt: [ usersTable , Arn ]
   
 package:
   artifact: target/aql-request.jar
@@ -33,6 +34,7 @@ functions:
   currentTime:
     handler: com.aql.request.Handler
     environment:
+      REGION: ${self:provider.region}
       TABLE_NAME: aqlRequest
     events:
       - http:
@@ -41,6 +43,7 @@ functions:
   indexAqlRequest:
     handler: com.aql.request.HandlerIndex
     environment:
+      REGION: ${self:provider.region}
       ELASTICSEARCH_ENDPOINT:
         Fn::GetAtt: [ ElasticSearchCluster , DomainEndpoint ]
     events:
@@ -86,3 +89,14 @@ resources:
           DedicatedMasterEnabled: false
           ZoneAwarenessEnabled: false
         ElasticsearchVersion: 5.3
+        AccessPolicies:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:*
+              Resource: arn:aws:es:eu-west-1:999566048748:domain/aql/*
+              Principal:
+                AWS: 
+                  - arn:aws:iam::999566048748:role/AqlRequest-dev-eu-west-1-lambdaRole
+                  - arn:aws:iam::999566048748:user/AqlKibanaAdmin

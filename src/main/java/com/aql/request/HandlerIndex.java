@@ -1,10 +1,18 @@
 package com.aql.request;
 
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Supplier;
 
+import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.log4j.Logger;
+import org.joda.time.DateTimeZone;
 
+import com.amazonaws.auth.AWS4Signer;
+import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.services.dynamodbv2.model.AttributeValue;
 import com.amazonaws.services.dynamodbv2.model.StreamRecord;
 import com.amazonaws.services.lambda.runtime.Context;
@@ -16,24 +24,40 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.searchbox.client.JestClient;
 import io.searchbox.client.JestClientFactory;
 import io.searchbox.client.config.HttpClientConfig;
+import io.searchbox.core.DocumentResult;
 import io.searchbox.core.Index;
 import io.searchbox.indices.mapping.PutMapping;
+import vc.inreach.aws.request.AWSSigner;
+import vc.inreach.aws.request.AWSSigningRequestInterceptor;
 
 public class HandlerIndex implements RequestHandler<DynamodbEvent, String> {
 
 	private static final Logger LOG = Logger.getLogger(HandlerIndex.class);
 	private static final String INDEX = "aql_requests";
 	private static final String TYPE = "request";
+	private static final String ES_SERVICE = "es";
     @Override
 	public String handleRequest(DynamodbEvent input, Context context) 
 	{
 		LOG.info("received: " + input);
 		String ESEndpoint = "http://" + System.getenv("ELASTICSEARCH_ENDPOINT") + ":80";
 		LOG.info("elasticsearchEndpoint: " + ESEndpoint);
+		String region = System.getenv("REGION");
+		LOG.info("region: " + region);
 		
         try
         {
-        	JestClientFactory factory = new JestClientFactory();
+        	DefaultAWSCredentialsProviderChain awsCredentialsProvider = new DefaultAWSCredentialsProviderChain();
+        	final com.google.common.base.Supplier<LocalDateTime> clock = () -> LocalDateTime.now(ZoneOffset.UTC);
+        	AWSSigner awsSigner = new AWSSigner(awsCredentialsProvider, region, ES_SERVICE, clock);
+
+        	JestClientFactory factory = new JestClientFactory() {
+        	    @Override
+        	    protected HttpClientBuilder configureHttpClient(HttpClientBuilder builder) {
+        	        builder.addInterceptorLast(new AWSSigningRequestInterceptor(awsSigner));
+        	        return builder;
+        	    }
+        	};
         	 factory.setHttpClientConfig(new HttpClientConfig
         	                        .Builder(ESEndpoint)
         	                        .multiThreaded(true)
@@ -44,24 +68,6 @@ public class HandlerIndex implements RequestHandler<DynamodbEvent, String> {
         	                        .build());
         	 JestClient client = factory.getObject();
         	 
-//        	 PutMapping putMapping = new PutMapping.Builder(
-//        		        INDEX,
-//        		        TYPE,
-//        		        "{ \"" + TYPE + "\" : { \"properties\" : { \"timestamp\" : {\"type\" : \"date\"}, "
-//        		        										+ "\"email\" : {\"type\" : \"string\",\"index\": \"not_analyzed\"},"
-//        		        										+ "\"app_lib_version\" : {\"type\" : \"string\",\"index\": \"not_analyzed\"},"
-//        		        										+ "\"core_lib_version\" : {\"type\" : \"string\",\"index\": \"not_analyzed\"},"
-//        		        										+ "\"code_letter\" : {\"type\" : \"string\",\"index\": \"not_analyzed\"},"
-//        		        										+ "\"batch_size\" : {\"type\" : \"long\",\"index\": \"not_analyzed\"},"
-//        		        										+ "\"procedure\" : {\"type\" : \"string\",\"index\": \"not_analyzed\"},"
-//        		        										+ "\"type\" : {\"type\" : \"string\",\"index\": \"not_analyzed\"},"
-//        		        										+ "\"aql\" : {\"type\" : \"string\",\"index\": \"not_analyzed\"},"
-//        		        										+ "\"ip\" : {\"type\" : \"ip\","
-//        		        										+ "\"standard\" : {\"type\" : \"string\",\"index\": \"not_analyzed\"} } } }"
-//        		).build();
-//        		client.execute(putMapping);
-        		
-//        	 ObjectMapper mapper = new ObjectMapper(); // create once, reuse
         	for (DynamodbStreamRecord record : input.getRecords()) {
 
                 if (record != null) 
@@ -70,17 +76,7 @@ public class HandlerIndex implements RequestHandler<DynamodbEvent, String> {
                 	Map<String, AttributeValue> map = sr.getNewImage();
                 	LOG.info("record : " + map);
                 	// instance a json mapper
-                	
-
-                	// generate json
-//                	AqlRequest r = new AqlRequest();
-//                	r.setApp_lib_version(map.get("app_lib_version").getS());
-//                	r.setCore_lib_version(map.get("core_lib_version").getS());
-//                	r.setEmail(map.get("email").getS());
-//                	r.setIp(map.get("ip").getS());
-//                	r.setTimestamp(map.get("timestamp").getN());
-//                	byte[] json = mapper.writeValueAsBytes(yourbeaninstance);
-                	
+                	                	
                 	Map<String, Object> json = new HashMap<String, Object>();
                 	json.put("timestamp",Long.parseLong(map.get("timestamp").getN()));
                 	json.put("email",map.get("email").getS());
@@ -99,7 +95,9 @@ public class HandlerIndex implements RequestHandler<DynamodbEvent, String> {
                     LOG.info("item : " + json);
                     
                     Index index = new Index.Builder(json).index(INDEX).type(TYPE).build();
-                 	client.execute(index);
+                 	DocumentResult doc = client.execute(index);
+                 	LOG.info("getErrorMessage : " + doc.getErrorMessage());
+                 	LOG.info("doc : " + doc.toString());
                 }
 
                 // Your code here

@@ -20,6 +20,7 @@ import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.amazonaws.services.dynamodbv2.document.spec.PutItemSpec;
 import com.amazonaws.regions.Region;
+import com.amazonaws.regions.RegionUtils;
 import com.amazonaws.regions.Regions;
 import java.util.regex.*;
 
@@ -29,13 +30,14 @@ public class Handler implements RequestHandler<Map<String, Object>, ApiGatewayRe
     private static final ObjectMapper objectMapper = new ObjectMapper();
 	private DynamoDB dynamoDb;
     private String DYNAMODB_TABLE_NAME = System.getenv("TABLE_NAME");
-	private Regions REGION = Regions.EU_WEST_1;
+    private String REGION = System.getenv("REGION");
 	private static final String geoIpEndpoint = "http://freegeoip.net/json/";
 
 	private void Record(AqlRequest r, String ip, long date, String country, String location)
 	{
+		Region region = RegionUtils.getRegion(REGION);
 		AmazonDynamoDBClient client = new AmazonDynamoDBClient();
-        client.setRegion(Region.getRegion(REGION));
+		client.setRegion(region);
         this.dynamoDb = new DynamoDB(client);
         LOG.info("Connected to dynamo");
         Table t = dynamoDb.getTable(DYNAMODB_TABLE_NAME);
