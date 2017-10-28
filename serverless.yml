@@ -95,8 +95,18 @@ resources:
             - Effect: Allow
               Action:
                 - es:*
-              Resource: arn:aws:es:eu-west-1:999566048748:domain/aql/*
+              Resource:
+                Fn::Join:
+                  - ''
+                  - - 'arn:aws:es:'
+                    - Ref: 'AWS::Region'
+                    - ':'
+                    - Ref: 'AWS::AccountId'
+                    - ':'
+                    - 'domain/'
+                    - ${self:resources.Resources.ElasticSearchCluster.Properties.DomainName}
+                    - "/*"
               Principal:
                 AWS: 
-                  - arn:aws:iam::999566048748:role/AqlRequest-dev-eu-west-1-lambdaRole
+                  - Fn::GetAtt: [ IamRoleLambdaExecution, Arn ]
                   - arn:aws:iam::999566048748:user/AqlKibanaAdmin
